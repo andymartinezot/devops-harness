@@ -72,8 +72,8 @@ One `AskUserQuestion` round (max 4 questions), then a second only if needed. Typ
 
 ## 4. Draft the files
 
-Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from steps 1-3. Unknowns
-become `TODO: <what would settle it>`, never a guess.
+Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from steps 1-3
+(`{{KIT_DIR}}` is the kit root). Unknowns become `TODO: <what would settle it>`, never a guess.
 
 - **Existing `CLAUDE.md`: merge, never overwrite.** Show the diff; additions only unless the user asks
   otherwise. Same for any existing rule, agent or skill with the same name.
@@ -101,9 +101,11 @@ become `TODO: <what would settle it>`, never a guess.
 
 ## 6. Check and report
 
-- Kit skills installed user-wide? `ls -l ~/.claude/skills/ | grep '<kit>'` should show `gitlab`,
-  `outbox`, `spec`, `spec-verify`, `harness-init`. If not: `<kit>/install.sh`.
-- Run `<kit>/scripts/harness-lint.sh <workspace>`; fix FAILs, explain WARNs.
+- Kit skills linked into the workspace? `<kit>/install.sh --list --project <workspace>` should show
+  `gitlab`, `outbox`, `spec`, `spec-verify`, `harness-init` as installed. If not:
+  `<kit>/install.sh --project <workspace>`. Per project, not user-wide: a user-wide skill outranks a
+  project skill with the same name.
+- Run `/lint` (or `<kit>/scripts/harness-lint.sh <workspace>`); fix FAILs, explain WARNs.
 - Report: files written (paths), channels enabled / not enabled, deferred `TODO:`s, and the suggested
   first task. Recommend a fresh session so the new `CLAUDE.md` and rules load.
 
