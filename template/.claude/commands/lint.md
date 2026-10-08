@@ -1,5 +1,5 @@
 ---
-description: Health-check this project's harness (memory, agents, skills, specs, STATUS age, ignore consistency, leak scan). Add --live to also run each enabled integration's auth check.
+description: Health-check this project's harness (memory, agents and routing, orchestrator rule, skills, commands, leftover placeholders, specs, STATUS age, ignore consistency, repo CLAUDE.md coverage, leak scan). Add --live to also run each enabled integration's auth check.
 argument-hint: "[--live]"
 ---
 

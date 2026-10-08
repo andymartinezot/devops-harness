@@ -1,6 +1,6 @@
 ---
 name: harness-init
-description: Bootstrap (or extend) an agent harness in any DevOps workspace — a root CLAUDE.md that routes work, STATUS.md / DECISIONS.md, rules for change-safety, secrets, memory, git and integrations, a spec layout, an outbox, session logs, and a memory directory — by surveying the workspace read-only and ASKING for every fact it can't derive. Never overwrites an existing CLAUDE.md; merges into it. Starts small (main plus one read-only inspector). Trigger on `/harness-init`, "set up the harness here", "bootstrap agents for this project".
+description: Bootstrap (or extend) an agent harness in any DevOps workspace — a root CLAUDE.md that routes work, STATUS.md / DECISIONS.md, the shared orchestrator rule, rules for change-safety, secrets, memory, git and integrations, agent and repo-CLAUDE.md templates, a spec layout, an outbox, session logs, and a memory directory — by surveying the workspace read-only and ASKING for every fact it can't derive. Never overwrites an existing CLAUDE.md; merges into it. Starts small (main plus one read-only inspector). Trigger on `/harness-init`, "set up the harness here", "bootstrap agents for this project".
 argument-hint: "[workspace path]   (default: current directory)"
 disable-model-invocation: true
 ---
@@ -28,9 +28,19 @@ Run in parallel and summarize in a short table:
   `template.yaml`, `Dockerfile`, `.gitlab-ci.yml`, `.github/workflows/`).
 - Existing harness: `CLAUDE.md`, `AGENTS.md`, `.claude/` (settings, rules, agents, skills), `docs/`,
   `specs/`, `memory/`, and per-repo `CLAUDE.md` files.
-- **Secret-bearing paths by filename only** — `*secret*`, `*credential*`, `.env*`, `*.pem`, `*.key`,
-  `*kubeconfig*`, `secrets/`. **Never open, cat or grep them**; a single-line secret file prints its
-  value on any line-oriented read. List paths, and later propose `deny` rules for them.
+- **Secret-bearing paths by filename only** — `*secret*`, `*credential*`, `.env*`, `.envrc`, `*.pem`,
+  `*.key`, `*.jks`, `*.p12`, `*kubeconfig*`, `*.dockerconfigjson`, `secrets/`. **Never open, cat or
+  grep them**; a single-line secret file prints its value on any line-oriented read. List paths, and
+  later propose `deny` rules for them.
+- **Secret-shaped keys in ordinary config, by count only.** Filename matching misses committed values
+  in values files, application config, `*.env*` and per-env config modules. For each, count lines
+  whose **key** looks secret
+  (`grep -ciE '(secret|password|passwd|token|license|api_?key|client_?id|private_?key)[^:=]*[:=]' <file>`)
+  and list path + count only. Never print the lines, and never print-then-redact: hand-rolled
+  redaction regexes fail on quoting (and BSD `sed` ignores `\s`). Each hit becomes a path row in
+  `secrets-handling.md`.
+- Per repo, recent activity (`git -C <r> log --since=90.days --oneline | wc -l`) — it decides which
+  areas deserve their own owner agent later.
 - Tools on PATH relevant to channels: `command -v git glab gh aws kubectl terraform helm jq yq` and any
   the user's environment documents.
 
@@ -76,27 +86,46 @@ Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from s
 (`{{KIT_DIR}}` is the kit root). Unknowns become `TODO: <what would settle it>`, never a guess.
 
 - **Existing `CLAUDE.md`: merge, never overwrite.** Show the diff; additions only unless the user asks
-  otherwise. Same for any existing rule, agent or skill with the same name.
+  otherwise. Same for any existing rule, agent or skill with the same name. If the existing file is
+  large, offer the alternative: archive it byte-for-byte under `docs/archive/`, rewrite `CLAUDE.md` as
+  the template's map, and move the detail into on-demand `.claude/context/*.md` files.
+- **The "Routing" section is required in `CLAUDE.md`, whatever else is merged.** It holds the
+  project's routing table, tie-breaks, shared-infra list and handoff exclusions. The generic
+  orchestration protocol is `.claude/rules/orchestrator.md` — a behavior file copied as-is from the
+  template, with no placeholders; don't copy its content into `CLAUDE.md`.
+- `.claude/templates/` (inspector, domain agent, repo `CLAUDE.md`) stays outside `.claude/agents/`:
+  Claude Code registers every `.md` in `agents/` as an agent, placeholders and all.
 - `.claude/settings.json`: start from the template (deny force-push, ask on push). Propose extra
   `deny` rules for the secret-bearing paths found in step 1 and for IaC apply / cluster create-delete /
   stack deploy commands of the tools present; `allow` for the channels' reads, `ask` for their writes.
   Write only the approved ones.
-- `.claude/rules/secrets-handling.md`: list the secret-bearing paths from step 1 (paths only).
+- `.claude/rules/secrets-handling.md`: list the secret-bearing paths and the secret-shaped-key hits
+  from step 1 (paths and counts only).
 - `.claude/rules/git-conventions.md`: the ticket convention and the personal/committed choice.
 - **Memory:** the harness keeps per-project memory under `~/.claude/projects/<encoded path>/memory`
   (list `~/.claude/projects/` to find the entry for this workspace — don't guess the encoding). To make
   memory visible and portable, offer: back it up, move its files to `<workspace>/memory/`, and replace
   the harness directory with a symlink to it. Only with the user's OK; verify a read and a write
   through the link afterwards.
-- The template's `handoff` and `resume` skills are workspace copies — keep them unless the workspace
-  already has its own.
+- The template's `handoff` and `resume-handoff` skills are workspace copies — keep them unless the
+  workspace already has its own. A workspace with an older kit's `resume` skill: rename it to
+  `resume-handoff` (it is the counterpart of `/handoff`).
 
 ## 5. Start small
 
-- Routing starts with **main plus one read-only inspector agent** (from
-  `template/.claude/agents/_example-agent.md`). Propose domain agents from the survey, but create one
-  only when a routing need recurs.
-- Per-repo `CLAUDE.md` files are written lazily — the first time a repo is actually worked on.
+- Routing starts with **main plus one read-only inspector agent**: copy
+  `.claude/templates/inspector-agent.md` to `.claude/agents/<prefix>-inspector-agent.md`, fill it, and
+  add its routing row.
+- **Domain agents:** propose a split from the survey, but create one only when a routing need
+  recurs. Group repos by stack and knowledge boundary, and give the busiest areas (by recent commit
+  count) their own owner — one agent per repo floods main's context with agent descriptions. Create
+  each from `.claude/templates/domain-agent.md` and add its routing row. New agent files load only in
+  the **next** session.
+- **Per-repo `CLAUDE.md`:** from `.claude/templates/repo-CLAUDE.md`. Claude Code loads it whenever work
+  touches that repo, so it is how repo knowledge reaches main and subagents without costing context
+  elsewhere. By default write it the first time a repo is worked on; once owner agents exist, offer to
+  write all of them at once, delegated to the owners in parallel (they read their repos; main
+  doesn't). Verify a sample: commands exist, no secret values, ignored or committed as chosen in step 3.
 - Suggest the first real task to run through the harness (a read-only status check is ideal).
 
 ## 6. Check and report

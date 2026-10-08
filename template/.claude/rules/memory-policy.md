@@ -53,7 +53,7 @@ What genuinely belongs in memory:
 - Every memory gets one index line in `MEMORY.md`: `- [Title](<name>.md) — hook`.
 - Link related memories with `[[name]]`. A link to a memory that doesn't exist yet is fine — it marks something worth writing.
 - Convert relative dates to absolute.
-- `scripts/harness-lint.sh` in the kit checks all of the above.
+- `/lint` (the kit's `scripts/harness-lint.sh`) checks all of the above.
 
 ## Maintenance
 

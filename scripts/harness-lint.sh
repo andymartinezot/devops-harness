@@ -7,9 +7,12 @@
 #   harness-lint.sh [workspace] --live   # also run each enabled integration's auth check
 #
 # Checks: memory (name == stem, index pointers, Why/How), agents (frontmatter,
-# output contract), skills (frontmatter, name == dir), specs (Status only in
-# spec.md), STATUS.md age, harness-file ignore consistency across repos, and a
-# long-base64 leak scan over docs/ memory/ specs/ and the root .md files.
+# output contract, no templates registered as agents, every routed agent exists),
+# the orchestrator rule, skills (frontmatter, name == dir), commands (kit scripts
+# they call exist), {{…}} placeholders left in facts files, specs (Status only in
+# spec.md), STATUS.md age, harness-file ignore consistency and a CLAUDE.md in
+# every repo, and a long-base64 leak scan over docs/ memory/ specs/ and the root
+# .md files.
 #
 set -uo pipefail
 
@@ -17,7 +20,7 @@ WS="."; LIVE=0
 for a in "$@"; do
   case "$a" in
     --live) LIVE=1 ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) WS="$a" ;;
   esac
 done
@@ -70,7 +73,6 @@ if [[ -d .claude/agents ]]; then
   for f in .claude/agents/*.md; do
     [[ -e "$f" ]] || continue
     stem=$(basename "$f" .md)
-    [[ "$stem" == _* ]] && continue   # templates / examples
     n=$((n + 1))
     name=$(fm "$f" name); desc=$(fm "$f" description)
     [[ "$name" == "$stem" ]] || { fail "agents: $f name '$name' != filename stem"; bad=$((bad + 1)); }
@@ -80,7 +82,33 @@ if [[ -d .claude/agents ]]; then
     [[ -z "$missing" ]] || { fail "agents: $f output contract lacks${missing#,}"; bad=$((bad + 1)); }
   done
   [[ $bad -eq 0 ]] && pass "agents: $n agents, frontmatter and output contract ok"
+
+  # Claude Code registers EVERY .md in .claude/agents/ — a template left there becomes a real agent.
+  bad=0
+  for f in .claude/agents/*.md; do
+    [[ -e "$f" ]] || continue
+    name=$(fm "$f" name)
+    case "$(basename "$f")|$name" in
+      _*|*'<'*|*'{{'*) fail "agents: $f registers as agent '$name' (template or placeholder) — move templates to .claude/templates/"; bad=$((bad + 1)) ;;
+    esac
+  done
+  [[ $bad -eq 0 ]] && pass "agents: no templates or placeholder agents registered"
+
+  # Every agent the root CLAUDE.md routes to must exist.
+  if [[ -f CLAUDE.md ]]; then
+    missing=""
+    for a in $(grep -oE '`[a-z][a-z0-9-]*-agent`' CLAUDE.md | tr -d '`' | sort -u); do
+      [[ "$a" == "main-agent" ]] && continue
+      [[ -f ".claude/agents/$a.md" ]] || missing="$missing $a"
+    done
+    if [[ -n "$missing" ]]; then fail "routing: CLAUDE.md names agents with no file in .claude/agents/:$missing"
+    else pass "routing: every agent named in CLAUDE.md exists"; fi
+  fi
 fi
+
+# ---- orchestrator rule -----------------------------------------------------
+if [[ -f .claude/rules/orchestrator.md ]]; then pass "orchestrator: .claude/rules/orchestrator.md present"
+else warn "orchestrator: .claude/rules/orchestrator.md missing — the main session has no shared protocol (copy it from the kit's template/)"; fi
 
 # ---- skills -----------------------------------------------------------------
 if [[ -d .claude/skills ]]; then
@@ -95,6 +123,38 @@ if [[ -d .claude/skills ]]; then
     [[ -n "$desc" ]] || { fail "skills: $f has no description"; bad=$((bad + 1)); }
   done
   [[ $bad -eq 0 ]] && pass "skills: $n skills, name == directory"
+fi
+
+# ---- commands: the kit scripts they call still exist ------------------------
+if [[ -d .claude/commands ]]; then
+  n=0; bad=0
+  for f in .claude/commands/*.md; do
+    [[ -e "$f" ]] || continue
+    n=$((n + 1))
+    for p in $(grep -oE 'bash /[^ ]+\.sh' "$f" | sed 's/^bash //' | sort -u); do
+      [[ -f "$p" ]] || { fail "commands: $f calls $p, which doesn't exist (kit moved? fix the path)"; bad=$((bad + 1)); }
+    done
+  done
+  [[ $bad -eq 0 ]] && pass "commands: $n commands, referenced scripts exist"
+fi
+
+# ---- placeholders left in the project's facts files -------------------------
+# Skills and .claude/templates/ are excluded: they are behavior, and quote {{…}} or <…> on purpose.
+facts=""
+for p in CLAUDE.md STATUS.md DECISIONS.md .claude/settings.json .claude/rules/*.md .claude/commands/*.md .claude/agents/*.md; do
+  [[ -f "$p" ]] && facts="$facts $p"
+done
+if [[ -n "$facts" ]]; then
+  hits=$(grep -cHE '\{\{[^}]+\}\}' $facts 2>/dev/null | grep -v ':0$' || true)
+  if [[ -n "$hits" ]]; then
+    warn "placeholders: {{…}} left to fill (run /harness-init, or replace with TODO: <what settles it>):"
+    for h in $hits; do
+      f=${h%:*}; l=$(grep -nE '\{\{[^}]+\}\}' "$f" | head -1 | cut -d: -f1)
+      echo "      $f: ${h##*:} (first at line $l)"
+    done
+  else
+    pass "placeholders: none left in the facts files"
+  fi
 fi
 
 # ---- specs ------------------------------------------------------------------
@@ -137,6 +197,18 @@ if [[ -n "$repos" ]]; then
   if [[ $ignored -eq 0 ]]; then pass "ignore: harness files are committable in all $total repos"
   elif [[ $ignored -eq $total ]]; then pass "ignore: harness files are ignored in all $total repos"
   else warn "ignore: harness files ignored in $ignored/$total repos — not ignored in:$mixed"; fi
+
+  # Each sub-repo should get its own CLAUDE.md (template: .claude/templates/repo-CLAUDE.md).
+  have=0; without=""; nrepos=0
+  for r in $repos; do
+    [[ "$r" == "." ]] && continue
+    nrepos=$((nrepos + 1))
+    if [[ -f "$r/CLAUDE.md" ]]; then have=$((have + 1)); else without="$without ${r#./}"; fi
+  done
+  if [[ $nrepos -gt 0 ]]; then
+    if [[ -z "$without" ]]; then pass "repo CLAUDE.md: all $nrepos repos have one"
+    else warn "repo CLAUDE.md: $have/$nrepos repos have one (fine if written lazily) — missing in:$without"; fi
+  fi
 fi
 
 # ---- leak scan: long base64-ish runs in harness docs ------------------------
@@ -162,6 +234,7 @@ if [[ $LIVE -eq 1 ]]; then
     col_auth=$(printf '%s' "$header" | awk -F'|' '{for(i=1;i<=NF;i++) if ($i ~ /Auth check/) print i}')
     col_status=$(printf '%s' "$header" | awk -F'|' '{for(i=1;i<=NF;i++) if ($i ~ /Status/) print i}')
     col_chan=2
+    to=""; command -v timeout >/dev/null 2>&1 && to="timeout 20"   # coreutils; absent on stock macOS
     if [[ -z "$col_auth" || -z "$col_status" ]]; then
       warn "live: $f has no 'Auth check' / 'Status' columns"
     else
@@ -171,7 +244,7 @@ if [[ $LIVE -eq 1 ]]; then
         chan=$(printf '%s' "$row" | awk -F'|' -v c="$col_chan" '{gsub(/^[ ]+|[ ]+$/, "", $c); print $c}')
         cmd=$(printf '%s' "$row" | awk -F'|' -v c="$col_auth" '{print $c}' | sed -nE 's/.*`([^`]+)`.*/\1/p')
         [[ -n "$cmd" ]] || { warn "live: $chan has no auth command"; continue; }
-        if timeout 20 bash -c "$cmd" >/dev/null 2>&1 </dev/null; then pass "live: $chan auth ok"
+        if $to bash -c "$cmd" >/dev/null 2>&1 </dev/null; then pass "live: $chan auth ok"
         else fail "live: $chan auth check failed — log in or see that row's Gotchas, then re-run"; fi
       done < <(grep -E '^\|' "$f" | tail -n +3)
     fi

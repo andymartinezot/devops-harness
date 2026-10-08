@@ -3,9 +3,11 @@
 {{ONE_LINE_PURPOSE}}
 
 - {{LAYOUT: "single repo" | "workspace of N repos; the root is not a repo — run git inside each"}}
-- Repo-level detail belongs in each repo's `CLAUDE.md` (written the first time the repo is worked on), not here.
+- **Not every directory is a repo.** {{container dirs holding nested repos (run git one level deeper), and unversioned dirs — or "none"}}.
 
-This file is the map: what exists, how it connects, who owns what, and how work gets delegated.
+This file is the map: what exists, how it connects, who owns what, and how work gets delegated. Repo-level detail belongs in each repo's `CLAUDE.md` (template: `.claude/templates/repo-CLAUDE.md`), not here. Deep reference that doesn't need to load every session can live in `.claude/context/*.md`, read on demand.
+
+Harness: from `{{KIT_DIR}}` on {{YYYY-MM-DD}}. `/lint` checks this project.
 
 ## Subprojects
 
@@ -13,9 +15,11 @@ This file is the map: what exists, how it connects, who owns what, and how work 
 |---|---|---|---|
 | {{dir}} | {{stack}} | {{role}} | main |
 
+**Outside this project:** {{"none" — or each path in `additionalDirectories`, what it holds and its owner. Their `CLAUDE.md` files are not auto-loaded, so read them explicitly.}}
+
 ## How it connects
 
-- {{inbound / outbound flows, one line each — or TODO: describe}}
+- {{inbound / outbound flows, one line each: producer → transport → consumer — or TODO: describe}}
 
 ## Environments
 
@@ -36,49 +40,31 @@ Access details (profiles, accounts, contexts) live in `.claude/rules/access.md` 
 | Change specs (SDD) | `specs/NNN-<slug>/` — `spec.md` (what/why, **the only place Status lives**), `plan.md`, `task.md`. Template: `specs/_template/` |
 | Session logs | `docs/sessions/<date>-<role>-<slug>.md` |
 | Outward writes (posted or pending) | `docs/outbox/<date>-<slug>.md` |
-| Durable cross-session knowledge | `memory/` (index `memory/MEMORY.md`). Policy: `.claude/rules/memory-policy.md` |
+| Durable cross-session knowledge | `memory/` (index `memory/MEMORY.md`, auto-injected each session). Policy: `.claude/rules/memory-policy.md` |
 | Channels and tools | `.claude/rules/integrations.md` |
 | Ticket state | {{TRACKER}} — files are snapshots only |
 
 ---
 
-## Main session: orchestrator
+## Routing — main is the orchestrator
 
-> **If you are running as a named agent**, skip this section and follow your agent definition.
+> **If you are running as a named agent** (any `{{PREFIX}}-*-agent`), **skip this section.** Follow your agent definition instead.
 
-Main holds the map, not the territory. It routes, specs, verifies and talks to the user.
-
-**Delegate** when a task sits inside one owner's scope and needs more than a quick read. **Main does
-itself:** quick lookups, cross-repo reasoning, specs, reviewing results, every user-facing decision.
-While the routing table has only main and the inspector, main does the repo work itself.
-
-**Routing:**
+This session is the orchestrator. **How** it orchestrates — delegate by default, the delegation prompt, the output contract, verifying claims, writing state down so context loss costs nothing, the outbox, when to write a spec — is in `.claude/rules/orchestrator.md`, which is the same in every project on the kit. This section holds only this project's facts.
 
 | Path / topic | Owner |
 |---|---|
-| Read-only live checks, evidence for specs | `{{inspector-agent}}` |
+| Read-only live checks, evidence for specs | `{{PREFIX}}-inspector-agent` |
 | Everything else | main |
 
-Tie-break: the owner of the file being changed owns the task. State the owner and the reason in one
-line before acting.
+Add a row per domain agent when one is created from `.claude/templates/domain-agent.md`.
 
-**Every delegation prompt contains:** the goal plus ticket or spec path; files in scope and what not to
-touch; permissions (default: edit and commit locally, **no push**); env scope for live systems; "End
-with the output contract."
+**Project tie-breaks:** {{e.g. "a service's values block in the deploy repo belongs to the platform owner" — or "none yet"}}. Each owner keeps its repos' `CLAUDE.md` current.
 
-**Output contract.** Every agent ends with `## Result` (done / partial / blocked), `## Changes`,
-`## Validation`, `## Commits`, `## Needs from others`, `## Risks / follow-ups`, `## Memory candidates`.
+**Secrets warning for delegations:** {{the secret-bearing paths from `secrets-handling.md` an owner must be warned about — or "none found"}}.
 
-**Memory is main's to write.** Agents propose; main verifies the claim, then writes.
+**Shared infra (spec first):** {{e.g. cluster bootstrap, DNS, IAM trust policies — or "none"}}.
 
-**Verify the claims that matter** by rereading the diff or running the check. If a result is wrong, send
-it back with the specific defect.
+**Handoff packet additions:** {{"none" — or project-specific "Do not include" items}}.
 
-**Outward writes go through `/outbox`.** Pushes, MRs/PRs, tracker and wiki writes, chat messages: drafted
-as outbox items, approved per item by the user, posted by main, verified, recorded. Sub-agents draft;
-they never post. See `.claude/rules/change-safety.md`.
-
-**Write a spec (`/spec`) before implementing** any change that spans more than one repo, touches a
-non-dev env, touches shared infra, or needs a rollback plan. Close it with `/spec-verify`.
-
-**End of session:** `/handoff`. **Start of session:** `/resume`.
+**Start of session:** `/resume-handoff`. **End of session:** `/handoff`.

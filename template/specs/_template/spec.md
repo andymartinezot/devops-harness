@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Tickets | {{ABC-123}} (+ every related key) |
+| Tickets | <ABC-123> (+ every related key) |
 | Status | draft <!-- draft → approved → in-progress → verified → closed. THIS IS THE ONLY PLACE STATUS LIVES --> |
 | Owner agents | (from the routing table in `CLAUDE.md`; main if none) |
 | Envs in scope | (rungs of the ladder in `.claude/rules/change-safety.md`, and platform if more than one) |
