@@ -1,6 +1,6 @@
 ---
 name: harness-init
-description: Bootstrap (or extend) an agent harness in any DevOps workspace — a root CLAUDE.md that routes work, STATUS.md / DECISIONS.md, the shared orchestrator rule, rules for change-safety, secrets, memory, git and integrations, agent and repo-CLAUDE.md templates, a spec layout, an outbox, session logs, and a memory directory — by surveying the workspace read-only and ASKING for every fact it can't derive. Never overwrites an existing CLAUDE.md; merges into it. Starts small (main plus one read-only inspector). Trigger on `/harness-init`, "set up the harness here", "bootstrap agents for this project".
+description: Bootstrap (or extend) an agent harness in any DevOps workspace — a root CLAUDE.md that routes work, STATUS.md / DECISIONS.md, the main-only orchestrator file, rules for change-safety, secrets, memory, git and integrations, agent and repo-CLAUDE.md templates, a spec layout, an outbox, session logs, a run ledger written by two observer hooks, and a memory directory — by surveying the workspace read-only and ASKING for every fact it can't derive. Never overwrites an existing CLAUDE.md; merges into it. Starts small (main plus a read-only inspector and a harness agent). Trigger on `/harness-init`, "set up the harness here", "bootstrap agents for this project".
 argument-hint: "[workspace path]   (default: current directory)"
 disable-model-invocation: true
 ---
@@ -91,11 +91,20 @@ Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from s
   the template's map, and move the detail into on-demand `.claude/context/*.md` files.
 - **The "Routing" section is required in `CLAUDE.md`, whatever else is merged.** It holds the
   project's routing table, tie-breaks, shared-infra list and handoff exclusions. The generic
-  orchestration protocol is `.claude/rules/orchestrator.md` — a behavior file copied as-is from the
-  template, with no placeholders; don't copy its content into `CLAUDE.md`.
+  orchestration protocol is `.claude/orchestrator.md` — a behavior file copied as-is from the
+  template, with no placeholders; don't copy its content into `CLAUDE.md`. It lives **outside**
+  `.claude/rules/` on purpose: rules load into every subagent, this file is main-only and
+  `/resume-handoff` reads it as step 0. Keep `.claude/rules/` to what a subagent needs to act safely.
 - `.claude/templates/` (inspector, domain agent, repo `CLAUDE.md`) stays outside `.claude/agents/`:
   Claude Code registers every `.md` in `agents/` as an agent, placeholders and all.
-- `.claude/settings.json`: start from the template (deny force-push, ask on push). Propose extra
+- `.claude/scripts/ledger-*.sh` and `docs/runs/README.md`: the run ledger. The template's
+  `.claude/settings.json` wires them as `SubagentStop` and `PostToolUse` hooks with
+  `$CLAUDE_PROJECT_DIR` paths; keep the scripts executable (`chmod +x`). They are observers (always
+  exit 0, under 5 s, field names and numbers only). The `PostToolUse` matcher ships as `Bash`; when a
+  tracker, wiki or chat channel is enabled, add that channel's **write** tool names to it (see
+  `docs/runs/README.md`). Test each hook once: `echo '{}' | bash .claude/scripts/<hook>.sh; echo $?`.
+- `.claude/settings.json`: start from the template (deny force-push, ask on push, the two ledger
+  hooks). Propose extra
   `deny` rules for the secret-bearing paths found in step 1 and for IaC apply / cluster create-delete /
   stack deploy commands of the tools present; `allow` for the channels' reads, `ask` for their writes.
   Write only the approved ones.
@@ -113,9 +122,13 @@ Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from s
 
 ## 5. Start small
 
-- Routing starts with **main plus one read-only inspector agent**: copy
-  `.claude/templates/inspector-agent.md` to `.claude/agents/<prefix>-inspector-agent.md`, fill it, and
-  add its routing row.
+- Routing starts with **main, one read-only inspector and one harness agent**: copy
+  `.claude/templates/inspector-agent.md` to `.claude/agents/<prefix>-inspector-agent.md` and
+  `.claude/templates/harness-agent.md` to `.claude/agents/<prefix>-harness-agent.md`, fill them, and
+  add their routing rows. The harness agent is the one that edits agents, rules, local skills, hooks
+  and the orchestrator file afterwards, showing every change to the user first; main routes "this
+  rule is in the way" to it instead of editing rules itself.
+- The template's `retro` skill (linked) reads `docs/runs/` weekly; nothing to configure.
 - **Domain agents:** propose a split from the survey, but create one only when a routing need
   recurs. Group repos by stack and knowledge boundary, and give the busiest areas (by recent commit
   count) their own owner — one agent per repo floods main's context with agent descriptions. Create
@@ -131,12 +144,19 @@ Copy `<kit>/template/` into the workspace and fill the `{{PLACEHOLDERS}}` from s
 ## 6. Check and report
 
 - Kit skills linked into the workspace? `<kit>/install.sh --list --project <workspace>` should show
-  `gitlab`, `outbox`, `spec`, `spec-verify`, `harness-init` as installed. If not:
+  `gitlab`, `lint`, `outbox`, `spec`, `spec-verify`, `harness-init` as installed. If not:
   `<kit>/install.sh --project <workspace>`. Per project, not user-wide: a user-wide skill outranks a
-  project skill with the same name.
+  project skill with the same name. A workspace from an older kit may still have
+  `.claude/commands/lint.md`; delete it, the linked `lint` skill replaces it.
 - Run `/lint` (or `<kit>/scripts/harness-lint.sh <workspace>`); fix FAILs, explain WARNs.
 - Report: files written (paths), channels enabled / not enabled, deferred `TODO:`s, and the suggested
-  first task. Recommend a fresh session so the new `CLAUDE.md` and rules load.
+  first task.
+- **After install: restart.** `CLAUDE.md`, the rules and the memory index are snapshotted at
+  session start and subagents inherit the parent's snapshot, so none of them reaches a subagent
+  until the user starts a fresh session. Agent files and hooks are live at once. Give the user the
+  check to run in the new session: spawn a cheap general-purpose agent with "do not use tools; list
+  the instruction files you see with approximate line counts" — it should list the root `CLAUDE.md`
+  and every rule, and not the orchestrator file.
 
 ## Guardrails
 

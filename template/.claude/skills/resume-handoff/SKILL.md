@@ -1,6 +1,6 @@
 ---
 name: resume-handoff
-description: Fast session orientation, the counterpart of /handoff. Reads CLAUDE.md (if not already loaded), STATUS.md, this role's latest session log, the DECISIONS.md index and git state, then prints six bullets and asks what we're working on. Use at the start of a session, on `/resume-handoff`, or when the user says "resume", "where were we" or "catch me up".
+description: Fast session orientation, the counterpart of /handoff. Reads the main-only orchestrator file, CLAUDE.md (if not already loaded), STATUS.md, this role's latest session log, the DECISIONS.md index and git state, then prints six bullets and asks what we're working on. Use at the start of a session, on `/resume-handoff`, or when the user says "resume", "where were we" or "catch me up".
 ---
 
 # Resume-handoff — session orientation
@@ -9,6 +9,7 @@ Do **only** these reads. Pull more context only if the user's answer needs it.
 
 ## Reads (in parallel)
 
+0. **`.claude/orchestrator.md`** — **main only, always read it.** It is deliberately not under `.claude/rules/` (rules load into every subagent; this file is for the orchestrating session), so it is never in context until you read it. It holds how to delegate, the output contract, the memory policy for main, and the thresholds. Named agents skip this step.
 1. **`CLAUDE.md`** at the workspace root. Usually already in context as project instructions; if so, skip the read.
 2. **`STATUS.md`**, if it exists. It is the "right now" page and outranks the session log for current state.
 3. **The latest session log for this role.** The role is `main`, or the named agent's area (see `/handoff`). Take the newest `docs/sessions/*-<role>-*.md`. If there is none, fall back to the newest `docs/sessions/*.md` and **mark it "(untagged log — may be from another console)"** — logs predating the role segment, or written by a different console, describe work this role did not do. If the directory is missing or empty, say "no prior session log".

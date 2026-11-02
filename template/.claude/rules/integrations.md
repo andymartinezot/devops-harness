@@ -7,7 +7,7 @@ How this workspace reaches each external system. `/outbox` reads this file to po
 - **Status** is `enabled` or `not enabled`. Note the date an enabled row's auth check last passed.
 - **Auth check** must be a read-only command that exits non-zero when logged out and **never prints a token**. A check that fails once with a success body may be flaky: retry once before calling it logged out.
 - **Identifiers** are the non-secret coordinates the tool needs: host, project/space key, page IDs, channel names. Never tokens.
-- **Gotchas** are what the first post taught you. Add them here, never to the kit. A gotcha that is about the tool itself, not this project's use of it, is a candidate for the kit's skills too.
+- **Gotchas** are what the first post taught you. Add them here, never to the kit. A gotcha that is about the tool itself, not this project's use of it, is a candidate for the kit's skills too. **Every Gotchas cell ends with `Unreachable: <fallback>`** so an agent that cannot reach the channel knows what to do without asking: tracker, wiki and chat → draft to `docs/outbox/` and post when reconnected; repo host → wait, note pending pushes in `docs/outbox/`; cloud or cluster → the login command (`! <command>`) or VPN, then report the checks as not run.
 - **No `|` characters inside cells:** `harness-lint.sh --live` splits rows on them.
 
 | Channel | Tool | Status | Auth check | Read | Write | Read-back | Identifiers | Gotchas |

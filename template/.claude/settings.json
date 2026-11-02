@@ -21,5 +21,30 @@
       "Bash(git push * --force)",
       "Bash(git push * -f)"
     ]
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/ledger-subagent.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/ledger-mutation.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

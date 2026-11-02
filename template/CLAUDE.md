@@ -40,8 +40,9 @@ Access details (profiles, accounts, contexts) live in `.claude/rules/access.md` 
 | Change specs (SDD) | `specs/NNN-<slug>/` — `spec.md` (what/why, **the only place Status lives**), `plan.md`, `task.md`. Template: `specs/_template/` |
 | Session logs | `docs/sessions/<date>-<role>-<slug>.md` |
 | Outward writes (posted or pending) | `docs/outbox/<date>-<slug>.md` |
-| Durable cross-session knowledge | `memory/` (index `memory/MEMORY.md`, auto-injected each session). Policy: `.claude/rules/memory-policy.md` |
+| Durable cross-session knowledge | `memory/` (index `memory/MEMORY.md`, auto-injected each session). Policy: `.claude/rules/memory-policy.md` (agents, short) and `.claude/orchestrator.md` §Memory policy (main, full) |
 | Channels and tools | `.claude/rules/integrations.md` |
+| Run ledger: subagent runs and outward mutations, appended by hooks | `docs/runs/<date>.md` (format: `docs/runs/README.md`) |
 | Ticket state | {{TRACKER}} — files are snapshots only |
 
 ---
@@ -50,11 +51,12 @@ Access details (profiles, accounts, contexts) live in `.claude/rules/access.md` 
 
 > **If you are running as a named agent** (any `{{PREFIX}}-*-agent`), **skip this section.** Follow your agent definition instead.
 
-This session is the orchestrator. **How** it orchestrates — delegate by default, the delegation prompt, the output contract, verifying claims, writing state down so context loss costs nothing, the outbox, when to write a spec — is in `.claude/rules/orchestrator.md`, which is the same in every project on the kit. This section holds only this project's facts.
+This session is the orchestrator. **How** it orchestrates — delegate by default, the delegation prompt, the output contract, verifying claims, writing state down so context loss costs nothing, the outbox, when to write a spec — is in `.claude/orchestrator.md`. It is **main-only**: `/resume-handoff` reads it, and it lives outside `.claude/rules/` on purpose so subagents don't carry it. It is the same in every project on the kit. This section holds only this project's facts.
 
 | Path / topic | Owner |
 |---|---|
 | Read-only live checks, evidence for specs | `{{PREFIX}}-inspector-agent` |
+| The harness itself: `.claude/**` (agents, rules, local skills, hooks, orchestrator file, templates), `specs/_template/`, `docs/runs/` format | `{{PREFIX}}-harness-agent` (shows every change to the user first; permissions and the kit stay out) |
 | Everything else | main |
 
 Add a row per domain agent when one is created from `.claude/templates/domain-agent.md`.

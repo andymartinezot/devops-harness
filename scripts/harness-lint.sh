@@ -8,11 +8,13 @@
 #
 # Checks: memory (name == stem, index pointers, Why/How), agents (frontmatter,
 # output contract, no templates registered as agents, every routed agent exists),
-# the orchestrator rule, skills (frontmatter, name == dir), commands (kit scripts
-# they call exist), {{…}} placeholders left in facts files, specs (Status only in
-# spec.md), STATUS.md age, harness-file ignore consistency and a CLAUDE.md in
-# every repo, and a long-base64 leak scan over docs/ memory/ specs/ and the root
-# .md files.
+# the main-only orchestrator file (and nothing main-only under rules/), the
+# subagent context cost, skills (frontmatter, name == dir), commands (kit scripts
+# they call exist, no /lint duplicate), hooks (scripts exist and are executable),
+# {{…}} placeholders left in facts files, specs (Status only in spec.md and one of
+# the known values), STATUS.md age, harness-file ignore consistency and a
+# CLAUDE.md in every repo, and a long-base64 leak scan over docs/ memory/ specs/
+# and the root .md files.
 #
 set -uo pipefail
 
@@ -106,9 +108,22 @@ if [[ -d .claude/agents ]]; then
   fi
 fi
 
-# ---- orchestrator rule -----------------------------------------------------
-if [[ -f .claude/rules/orchestrator.md ]]; then pass "orchestrator: .claude/rules/orchestrator.md present"
-else warn "orchestrator: .claude/rules/orchestrator.md missing — the main session has no shared protocol (copy it from the kit's template/)"; fi
+# ---- orchestrator file (main only, outside rules/) ---------------------------
+# Rules load into every subagent; the orchestrator file is main-only and is read by /resume-handoff.
+if [[ -f .claude/orchestrator.md ]]; then pass "orchestrator: .claude/orchestrator.md present (main only)"
+else warn "orchestrator: .claude/orchestrator.md missing — the main session has no shared protocol (copy it from the kit's template/)"; fi
+if [[ -f .claude/rules/orchestrator.md ]]; then
+  warn "orchestrator: .claude/rules/orchestrator.md loads into every subagent — move it to .claude/orchestrator.md and point /resume-handoff step 0 at it"
+fi
+if [[ -d .claude/rules ]]; then
+  for f in .claude/rules/*.md; do
+    [[ -e "$f" ]] || continue
+    grep -qE '^## (Delegate by default|Every delegation prompt|Thresholds)' "$f" && warn "orchestrator: $f holds main-only orchestration text — it loads into every subagent; move it to .claude/orchestrator.md"
+  done
+  # What every cold subagent carries before its own prompt: the root CLAUDE.md plus every rule.
+  ctx=$(cat CLAUDE.md .claude/rules/*.md 2>/dev/null | wc -l | tr -d ' ')
+  pass "context: $ctx lines load into every subagent (CLAUDE.md + .claude/rules/*.md)"
+fi
 
 # ---- skills -----------------------------------------------------------------
 if [[ -d .claude/skills ]]; then
@@ -136,6 +151,27 @@ if [[ -d .claude/commands ]]; then
     done
   done
   [[ $bad -eq 0 ]] && pass "commands: $n commands, referenced scripts exist"
+  [[ -f .claude/commands/lint.md && -d .claude/skills/lint ]] && warn "commands: .claude/commands/lint.md duplicates the kit's lint skill — delete the command"
+fi
+
+# ---- hooks: every command in the hooks blocks points at a script that exists and runs ------------
+if command -v jq >/dev/null 2>&1; then
+  n=0; bad=0
+  for sf in .claude/settings.json .claude/settings.local.json; do
+    [[ -f "$sf" ]] || continue
+    jq -e '.hooks' "$sf" >/dev/null 2>&1 || continue
+    while IFS= read -r cmd; do
+      [[ -n "$cmd" ]] || continue
+      n=$((n + 1))
+      p=${cmd/\$CLAUDE_PROJECT_DIR/.}; p=${p%% *}
+      if [[ ! -f "$p" ]]; then fail "hooks: $sf runs $p, which doesn't exist"; bad=$((bad + 1))
+      elif [[ ! -x "$p" ]]; then fail "hooks: $p is not executable (chmod +x)"; bad=$((bad + 1)); fi
+    done < <(jq -r '[.hooks[][]?.hooks[]? | select(.type=="command") | .command] | .[]' "$sf" 2>/dev/null)
+  done
+  if [[ $n -gt 0 ]]; then
+    [[ $bad -eq 0 ]] && pass "hooks: $n hook commands, scripts exist and are executable"
+    [[ -f docs/runs/README.md ]] || warn "hooks: docs/runs/README.md missing — the ledger hooks write there; copy it from the kit's template/"
+  fi
 fi
 
 # ---- placeholders left in the project's facts files -------------------------
@@ -163,15 +199,20 @@ if [[ -d specs ]]; then
   for d in specs/[0-9][0-9][0-9]-*/; do
     [[ -d "$d" ]] || continue
     n=$((n + 1))
-    [[ -f "$d/spec.md" ]] || { fail "specs: $d has no spec.md"; bad=$((bad + 1)); continue; }
-    grep -qE '^\|[[:space:]]*Status[[:space:]]*\|' "$d/spec.md" || { fail "specs: $d/spec.md has no Status row"; bad=$((bad + 1)); }
+    [[ -f "$d/spec.md" ]] || { fail "specs: ${d%/} has no spec.md"; bad=$((bad + 1)); continue; }
+    st=$(grep -m1 -E '^\|[[:space:]]*Status[[:space:]]*\|' "$d/spec.md" | awk -F'|' '{print $3}' | sed -E 's/<!--.*//; s/^[[:space:]`*]+|[[:space:]`*]+$//g')
+    if [[ -z "$st" ]]; then fail "specs: ${d%/}/spec.md has no Status row"; bad=$((bad + 1))
+    else case "$st" in
+      draft|approved|in-progress|verified|closed) ;;
+      *) fail "specs: ${d%/}/spec.md Status '$st' is not one of draft|approved|in-progress|verified|closed"; bad=$((bad + 1)) ;;
+    esac; fi
     for other in plan.md task.md; do
       [[ -f "$d/$other" ]] || continue
       l=$(grep -nE '^(\|[[:space:]]*Status[[:space:]]*\||Status:)' "$d/$other" | cut -d: -f1 | head -1)
       [[ -z "$l" ]] || { fail "specs: $d$other:$l restates Status (it lives only in spec.md)"; bad=$((bad + 1)); }
     done
   done
-  [[ $bad -eq 0 ]] && pass "specs: $n specs, Status only in spec.md"
+  [[ $bad -eq 0 ]] && pass "specs: $n specs, Status only in spec.md and a known value"
 fi
 
 # ---- STATUS.md age ----------------------------------------------------------

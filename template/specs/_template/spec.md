@@ -37,8 +37,8 @@ Every cell needs a matching acceptance check in section 6.
 Services, accounts, clusters, DNS, other tenants and users affected if this goes wrong. Name shared infrastructure explicitly — it has tenants who are not us.
 
 ## 6. Acceptance checks
-Runnable commands with expected output, per env. `/spec-verify` runs these through the inspector. A check that wasn't run is not a pass.
+Runnable commands with expected output, per env. `/spec-verify` runs these through the inspector. A check that wasn't run is not a pass. The owner of a change never verifies it alone; name who runs the check.
 
-| # | Env | Check | Command | Expected |
-|---|---|---|---|---|
-| A1 | | | | |
+| # | Env | Check | Command | Expected | Verifier |
+|---|---|---|---|---|---|
+| A1 | | | | | inspector / owner / main / user |
